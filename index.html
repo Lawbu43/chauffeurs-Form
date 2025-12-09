@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ULTIMAX Trip Log</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="theme-color" content="#0d47a1">
+
+  <!-- Libraries (CDN + fallback for offline via Service Worker) -->
+  <script src="https://unpkg.com/signature_pad@4.2.0/dist/signature_pad.umd.min.js"></script>
+  <script src="https://unpkg.com/html2pdf.js@0.10.2/dist/html2pdf.bundle.min.js"></script>
+  <script src="https://unpkg.com/@html5-qrcode/html5-qrcode@2.3.8/minified/html5-qrcode.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root { --p:#0d47a1; --r:#d32f2f; --g:#2e7d32; }
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Roboto',sans-serif;background:#f0f4f8;padding:10px;line-height:1.5;}
+    .container{max-width:1000px;margin:0 auto;background:white;border-radius:16px;overflow:hidden;box-shadow:0 15px 60px rgba(0,0,0,0.22);}
+    header{background:var(--p);color:white;padding:30px;text-align:center;}
+    h1{font-size:32px;margin:0;} .subtitle{font-size:18px;opacity:0.95;margin-top:8px;}
+    .form-body{padding:30px;}
+    .label{font-weight:bold;color:var(--p);display:block;margin-bottom:6px;}
+    .required{color:var(--r);}
+    input,textarea,select{width:100%;padding:12px;border:1.8px solid #444;border-radius:8px;font-size:16px;background:white;}
+    input:focus,textarea:focus{outline:3px solid var(--p);border-color:var(--p);}
+    .row{display:flex;gap:20px;flex-wrap:wrap;margin:20px 0;}
+    .col{flex:1;min-width:280px;}
+    .radio-group{display:flex;flex-wrap:wrap;gap:22px;margin:14px 0;}
+    .radio-item{display:flex;align-items:center;gap:8px;font-size:15px;}
+    .table-wrapper{overflow-x:auto;margin:25px 0;border-radius:8px;border:1px solid #ddd;}
+    table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:1200px;}
+    th,td{border:1.8px solid #000;padding:10px;text-align:center;vertical-align:middle;}
+    th{background:var(--p);color:white;font-weight:600;}
+    th:nth-child(n+3){min-width:80px;}
+    td input{width:100%;padding:6px;font-size:12px;}
+    .signature-box{border:3px dashed var(--p);height:160px;border-radius:12px;background:#f8fbff;position:relative;touch-action:none;}
+    .signature-box canvas{width:100%;height:100%;border-radius:10px;}
+    .clear-btn{position:absolute;bottom:10px;right:12px;background:white;padding:8px 16px;border-radius:6px;color:var(--r);font-weight:bold;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,0.2);}
+    .scanner-box{border:2px dashed #555;padding:20px;border-radius:12px;background:#f9f9f9;text-align:center;margin:30px 0;}
+    #qr-reader{max-width:480px;margin:15px auto;border-radius:10px;overflow:hidden;}
+    .btn{padding:16px 40px;margin:12px 8px;border:none;border-radius:12px;color:white;font-size:18px;font-weight:600;cursor:pointer;min-width:220px;transition:0.3s;}
+    .btn-success{background:var(--g);}
+    .btn-primary{background:var(--p);}
+    .btn:hover{transform:translateY(-3px);box-shadow:0 10px 25px rgba(0,0,0,0.2);}
+    .offline-banner{background:#ff9800;color:white;padding:15px;text-align:center;font-weight:bold;display:none;}
+    .saved-banner{background:#4caf50;color:white;padding:10px;text-align:center;font-size:14px;display:none;}
+    .alert{padding:15px;margin:20px 0;border-radius:10px;font-weight:bold;}
+    .alert-error{background:#ffebee;color:var(--r);border:1px solid var(--r);}
+    .alert-success{background:#e8f5e8;color:var(--g);border:1px solid var(--g);}
+    .office-section{border:6px double var(--r);background:#fff5f5;padding:30px;margin-top:50px;border-radius:12px;}
+    @media (max-width:768px){.row{flex-direction:column;}.btn{width:100%;margin:10px 0;}}
+    @media print{
+      body{background:white;padding:0;}
+      .no-print,.scanner-box,.clear-btn,.offline-banner,.saved-banner,#alert-box{display:none !important;}
+      .signature-box{border:2px solid #000;background:white;}
+      input,textarea{border:none !important;background:transparent !important;}
+    }
+  </style>
+</head>
+<body>
+
+<div class="container" id="printable-form">
+  <header>
+    <h1>ULTIMAX Chauffeurs Services</h1>
+    <div class="subtitle">Driver Trip Log & Expense Claim Form</div>
+  </header>
+
+  <div id="offline-banner" class="offline-banner">OFFLINE MODE – Form auto-saves every few seconds</div>
+  <div id="saved-banner" class="saved-banner">Saved locally</div>
+  <div id="alert-box"></div>
+
+  <div class="form-body">
+
+    <div style="text-align:right;margin-bottom:25px;">
+      <strong>Date <span class="required">*</span>:</strong>
+      <input type="date" id="trip_date" required>
+    </div>
+
+    <strong>ENGAGEMENT TYPE <span class="required">*</span>:</strong>
+    <div class="radio-group" id="engagement-group">
+      <div class="radio-item"><input type="radio" name="engagement" value="Contract" id="e1"><label for="e1">Contract</label></div>
+      <div class="radio-item"><input type="radio" name="engagement" value="Per Trip" id="e2"><label for="e2">Per Trip</label></div>
+      <div class="radio-item"><input type="radio" name="engagement" value="Driver Day" id="e3"><label for="e3">Driver Day</label></div>
+      <div class="radio-item"><input type="radio" name="engagement" value="Adhoc" id="e4"><label for="e4">Adhoc</label></div>
+      <div class="radio-item"><input type="radio" name="engagement" value="Non-Contract" id="e5"><label for="e5">Non-Contract</label></div>
+      <div class="radio-item"><input type="radio" name="engagement" value="Per Pax" id="e6"><label for="e6">Per Pax</label></div>
+      <div class="radio-item"><input type="radio" name="engagement" value="Other" id="e7"><label for="e7">Other</label></div>
+    </div>
+
+    <div class="table-wrapper">
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2">Total Trips</th>
+          <th rowspan="2">Total Time</th>
+          <th>16</th><th>15</th><th>14</th><th>13</th><th>12</th><th>11</th><th>10</th><th>9</th>
+          <th>8</th><th>7</th><th>6</th><th>5</th><th>4</th><th>3</th><th>2</th><th>1</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><input type="text" id="total_trips"></td>
+          <td><input type="text" id="total_time"></td>
+          <td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td>
+          <td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td>
+          <td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td>
+          <td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td>
+        </tr>
+        <tr><td colspan="2">TRIP</td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td></tr>
+        <tr><td colspan="2">TIME</td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td></tr>
+        <tr><td colspan="2">LOCATION / PICK-UP</td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td><td><input type="text"></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="row">
+      <div class="col"><span class="label">Booking Code</span><input type="text" id="booking_code"></div>
+      <div class="col"><span class="label">Cost Code</span><input type="text" id="cost_code"></div>
+      <div class="col"><span class="label">Dept/Name</span><input type="text" id="dept_name"></div>
+    </div>
+    <div class="row">
+      <div class="col"><span class="label">Client Name</span><input type="text" id="client_name"></div>
+      <div class="col"><span class="label">Requested By</span><input type="text" id="requested_by"></div>
+    </div>
+
+    <div style="margin:30px 0;">
+      <strong>Other Correspondence (While Vehicle App In Use)</strong>
+      <div class="row">
+        <div class="col"><span class="label">Date</span><input type="date" id="corr_date"></div>
+        <div class="col"><span class="label">Time</span><input type="time" id="corr_time"></div>
+        <div class="col"><span class="label">Location</span><input type="text" id="corr_location"></div>
+      </div>
+      <strong>Stop Reason:</strong>
+      <div class="radio-group">
+        <div class="radio-item"><input type="radio" name="stop" value="Oil Check"><label>Oil Check</label></div>
+        <div class="radio-item"><input type="radio" name="stop" value="Per Hour"><label>Per Hour</label></div>
+        <div class="radio-item"><input type="radio" name="stop" value="Calling Field Rep"><label>Calling Field Rep</label></div>
+        <div class="radio-item"><input type="radio" name="stop" value="Few Field"><label>Few Field</label></div>
+      </div>
+    </div>
+
+    <div style="margin:30px 0;">
+      <strong>Local Bus / SLA / Referral / Contracted</strong>
+      <div class="row">
+        <div class="col"><span class="label">Client Name</span><input type="text" id="client_local"></div>
+        <div class="col"><span class="label">No Tax / Pax</span><input type="text" id="no_tax_pax"></div>
+      </div>
+      <div class="row">
+        <div class="col">
+          <span class="label">Client / Agent Signature <span class="required">*</span></span>
+          <div class="signature-box"><canvas id="client_sig"></canvas><span class="clear-btn" onclick="clientPad.clear()">Clear</span></div>
+        </div>
+        <div class="col"><span class="label">Date</span><input type="date" id="client_date"></div>
+      </div>
+    </div>
+
+    <div style="margin:30px 0;">
+      <span class="label">PAX NAMES</span>
+      <textarea rows="4" id="pax_names"></textarea>
+      <div class="radio-group" style="margin-top:12px;">
+        <div class="radio-item"><input type="radio" name="docket" value="User"><label>User</label></div>
+        <div class="radio-item"><input type="radio" name="docket" value="Delivery Docket Uni-3-91-Docket"><label>Delivery Docket Uni-3-91-Docket</label></div>
+      </div>
+    </div>
+
+    <div style="margin:50px 0;">
+      <strong style="font-size:21px;">DRIVER DECLARATION <span class="required">*</span></strong>
+      <div class="row">
+        <div class="col"><span class="label">Driver Name <span class="required">*</span></span><input type="text" id="driver_name" required></div>
+        <div class="col"><span class="label">Date <span class="required">*</span></span><input type="date" id="driver_date" required></div>
+      </div>
+      <span class="label">Driver Signature <span class="required">*</span></span>
+      <div class="signature-box"><canvas id="driver_sig"></canvas><span class="clear-btn" onclick="driverPad.clear()">Clear</span></div>
+    </div>
+
+    <div class="office-section">
+      <strong style="font-size:21px;color:var(--r);">OFFICE / ACCOUNTS USE ONLY</strong>
+      <div class="row">
+        <div class="col">
+          <span class="label">Coordinator / Accountant Signature</span>
+          <div class="signature-box"><canvas id="office_sig"></canvas><span class="clear-btn" onclick="officePad.clear()">Clear</span></div>
+        </div>
+        <div class="col"><span class="label">Date Processed</span><input type="date" id="office_date"></div>
+      </div>
+    </div>
+
+    <div class="scanner-box no-print">
+      <strong>Scan QR / Barcode (Booking or Docket)</strong>
+      <div id="qr-reader"></div>
+      <div id="qr-result" style="margin-top:15px;font-weight:bold;color:var(--g);"></div>
+    </div>
+
+    <div style="text-align:center;margin:60px 0;" class="no-print">
+      <button class="btn btn-success" onclick="downloadPDF()">Download PDF Now</button>
+      <button class="btn btn-primary" onclick="submitWithEmail()">Submit to Office (when online)</button>
+      <button class="btn" style="background:#6c757d;" onclick="clearAll()">Clear Form</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+
+  // Signature Pads
+  const clientPad = new SignaturePad(document.getElementById('client_sig'), {penColor:'black'});
+  const driverPad = new SignaturePad(document.getElementById('driver_sig'), {penColor:'black'});
+  const officePad = new SignaturePad(document.getElementById('office_sig'), {penColor:'black'});
+
+  function resizeCanvas(c){if(c){const r=Math.max(window.devicePixelRatio||1,1);c.width=c.offsetWidth*r;c.height=c.offsetHeight*r;c.getContext('2d').scale(r,r);}}
+  [clientPad, driverPad, officePad].forEach(p => {resizeCanvas(p.canvas);});
+  window.onresize = () => [clientPad, driverPad, officePad].forEach(p => {const d=p.toDataURL();resizeCanvas(p.canvas);p.fromDataURL(d);});
+
+  const STORAGE_KEY = 'ultimax_trip_draft_2025';
+
+  function saveDraft(){
+    const data = {form:{}, sig:{c:clientPad.toDataURL(), d:driverPad.toDataURL(), o:officePad.toDataURL()}, ts:Date.now()};
+    document.querySelectorAll('input, textarea, select').forEach(el=>{
+      if(el.type==='radio'||el.type==='checkbox'){
+        if(el.checked) data.form[el.name||el.id]=el.value;
+      }else data.form[el.id]=el.value;
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    document.getElementById('saved-banner').style.display='block';
+    setTimeout(()=>document.getElementById('saved-banner').style.display='none',2000);
+  }
+
+  function loadDraft(){
+    const s = localStorage.getItem(STORAGE_KEY);
+    if(!s) return;
+    const d = JSON.parse(s);
+    Object.keys(d.form).forEach(k=>{
+      const el = document.getElementById(k);
+      if(el){
+        if(el.type==='radio'){
+          document.querySelector(`input[name="${el.name}"][value="${d.form[k]}"]`)?.checked=true;
+        }else el.value = d.form[k]||'';
+      }
+    });
+    if(d.sig.c) clientPad.fromDataURL(d.sig.c);
+    if(d.sig.d) driverPad.fromDataURL(d.sig.d);
+    if(d.sig.o) officePad.fromDataURL(d.sig.o);
+  }
+
+  document.querySelectorAll('input,textarea,select').forEach(el=>el.addEventListener('input',saveDraft));
+  document.querySelectorAll('input,textarea,select').forEach(el=>el.addEventListener('change',saveDraft));
+  setInterval(saveDraft, 5000);
+  loadDraft();
+
+  window.addEventListener('online', ()=>document.getElementById('offline-banner').style.display='none');
+  window.addEventListener('offline', ()=>document.getElementById('offline-banner').style.display='block');
+  if(!navigator.onLine) document.getElementById('offline-banner').style.display='block';
+
+  function showAlert(msg,type='error'){
+    document.getElementById('alert-box').innerHTML=`<div class="alert alert-${type}">${msg}</div>`;
+    setTimeout(()=>document.getElementById('alert-box').innerHTML='',8000);
+  }
+
+  function validate(){
+    if(!document.getElementById('trip_date').value || !document.getElementById('driver_name').value || driverPad.isEmpty() || !document.querySelector('input[name="engagement"]:checked')){
+      showAlert('Please complete all required fields and driver signature');
+      return false;
+    }
+    return true;
+  }
+
+  async function downloadPDF(){
+    if(!validate()) return;
+    const opt={margin:10,filename:`ULTIMAX_${document.getElementById('trip_date').value||'Draft'}.pdf`,image:{type:'jpeg',quality:0.98},html2canvas:{scale:3,useCORS:true},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}};
+    html2pdf().set(opt).from(document.getElementById('printable-form')).save();
+    showAlert('PDF downloaded!','success');
+  }
+
+  async function submitWithEmail(){
+    if(!validate()) return;
+    showAlert('Generating PDF and sending...','success');
+    const opt={margin:10,filename:'trip.pdf',image:{type:'jpeg',quality:0.98},html2canvas:{scale:3},jsPDF:{unit:'mm',format:'a4'}};
+    const pdf = await html2pdf().set(opt).from(document.getElementById('printable-form')).outputPdf('blob');
+    const fd = new FormData();
+    fd.append('pdf',pdf,`ULTIMAX_Trip_${new Date().toISOString().slice(0,10)}.pdf`);
+    fd.append('driver',document.getElementById('driver_name').value);
+    fd.append('date',document.getElementById('trip_date').value);
+    fd.append('booking',document.getElementById('booking_code').value||'N/A');
+
+    fetch('https://formspree.io/f/xqarlrby', {method:'POST',body:fd})
+      .then(()=> {showAlert('Submitted successfully!','success'); localStorage.removeItem(STORAGE_KEY); })
+      .catch(()=>showAlert('No internet – saved for later. Will send when online.','error'));
+  }
+
+  function clearAll(){
+    if(confirm('Delete this form?')){localStorage.removeItem(STORAGE_KEY);location.reload();}
+  }
+
+  // QR Scanner
+  const qr = new Html5Qrcode("qr-reader");
+  qr.start({facingMode:"environment"},{fps:10,qrbox:280}, text=> {
+    document.getElementById('qr-result').textContent="Scanned: "+text;
+    document.getElementById('booking_code').value = text;
+    setTimeout(()=>qr.stop(),2000);
+  }).catch(()=>{});
+</script>
+</body>
+</html>
